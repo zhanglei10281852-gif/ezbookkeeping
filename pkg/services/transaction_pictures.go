@@ -445,6 +445,7 @@ func (s *TransactionPictureService) cleanupDeletedTransactionPictures(c core.Con
 				break
 			}
 
+			removedInBatch := 0
 			for j := 0; j < len(pictureInfos); j++ {
 				pictureInfo := pictureInfos[j]
 
@@ -453,7 +454,16 @@ func (s *TransactionPictureService) cleanupDeletedTransactionPictures(c core.Con
 					log.Warnf(c, "[transaction_pictures.cleanupDeletedTransactionPictures] failed to delete objects of deleted transaction picture \"uid:%d,id:%d\", because %s", pictureInfo.Uid, pictureInfo.PictureId, err.Error())
 				} else {
 					removedCount++
+					removedInBatch++
 				}
+			}
+
+			// Keep failed records for a later maintenance retry, but stop this
+			// phase when the queried batch made no progress.  Without this guard a
+			// full batch of persistent delete failures is selected indefinitely and
+			// prevents the staging and orphan phases from running.
+			if removedInBatch == 0 {
+				break
 			}
 
 			if len(pictureInfos) < transactionPictureCleanupBatchSize {
