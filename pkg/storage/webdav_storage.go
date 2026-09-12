@@ -717,6 +717,9 @@ func (s *WebDAVObjectStorage) getFinalDirectoryUrl(dirPath string) string {
 		finalUrl = finalUrl + "/"
 	}
 
+	// Directory paths passed to List are relative to this storage's root.
+	// Keep discovery requests under the same root as object reads and writes.
+	dirPath = s.getFinalPath(dirPath)
 	if len(dirPath) > 0 && dirPath[0] == '/' {
 		dirPath = dirPath[1:]
 	}
