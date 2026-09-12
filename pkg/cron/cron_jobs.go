@@ -30,3 +30,15 @@ var CreateScheduledTransactionJob = &CronJob{
 		return services.Transactions.CreateScheduledTransactions(c, time.Now().Unix(), c.GetInterval())
 	},
 }
+
+// CleanupTransactionPicturesJob represents the cron job which periodically recover pending transaction picture objects and clean up orphaned objects
+var CleanupTransactionPicturesJob = &CronJob{
+	Name:        "CleanupTransactionPictures",
+	Description: "Periodically recover pending transaction picture objects and clean up orphaned objects.",
+	Period: CronJobIntervalPeriod{
+		Interval: time.Hour,
+	},
+	Run: func(c *core.CronContext) error {
+		return services.TransactionPictures.CleanupTransactionPictures(c)
+	},
+}

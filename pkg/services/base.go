@@ -94,6 +94,14 @@ type ServiceUsingStorage struct {
 	container *storage.StorageContainer
 }
 
+// transactionPictureStagingPathPrefix is the directory used to temporarily store transaction picture objects
+// before their database records are committed. Objects in this directory can never be read by transactions.
+const transactionPictureStagingPathPrefix = "staging"
+
+func (s *ServiceUsingStorage) storageContainer() *storage.StorageContainer {
+	return s.container
+}
+
 // ExistsAvatar returns whether the user avatar exists from the current avatar object storage
 func (s *ServiceUsingStorage) ExistsAvatar(ctx core.Context, uid int64, fileExtension string) (bool, error) {
 	return s.container.ExistsAvatar(ctx, s.getUserAvatarPath(uid, fileExtension))
@@ -139,6 +147,11 @@ func (s *ServiceUsingStorage) ExistsTransactionPicture(ctx core.Context, uid int
 	return s.container.ExistsTransactionPicture(ctx, s.getTransactionPicturePath(uid, pictureId, fileExtension))
 }
 
+// ExistsStagingTransactionPicture returns whether the staging transaction picture exists from the current transaction picture object storage
+func (s *ServiceUsingStorage) ExistsStagingTransactionPicture(ctx core.Context, uid int64, pictureId int64, fileExtension string) (bool, error) {
+	return s.container.ExistsTransactionPicture(ctx, s.getStagingTransactionPicturePath(uid, pictureId, fileExtension))
+}
+
 // ReadTransactionPicture returns the transaction picture from the current transaction picture object storage
 func (s *ServiceUsingStorage) ReadTransactionPicture(ctx core.Context, uid int64, pictureId int64, fileExtension string) (storage.ObjectInStorage, error) {
 	return s.container.ReadTransactionPicture(ctx, s.getTransactionPicturePath(uid, pictureId, fileExtension))
@@ -149,9 +162,34 @@ func (s *ServiceUsingStorage) SaveTransactionPicture(ctx core.Context, uid int64
 	return s.container.SaveTransactionPicture(ctx, s.getTransactionPicturePath(uid, pictureId, fileExtension), object)
 }
 
+// SaveStagingTransactionPicture returns whether save the transaction picture into the staging area of the current transaction picture object storage successfully
+func (s *ServiceUsingStorage) SaveStagingTransactionPicture(ctx core.Context, uid int64, pictureId int64, object storage.ObjectInStorage, fileExtension string) error {
+	return s.container.SaveTransactionPicture(ctx, s.getStagingTransactionPicturePath(uid, pictureId, fileExtension), object)
+}
+
+// MoveStagingTransactionPictureToFinal moves the staging transaction picture to the final path in the current transaction picture object storage
+func (s *ServiceUsingStorage) MoveStagingTransactionPictureToFinal(ctx core.Context, uid int64, pictureId int64, fileExtension string) error {
+	return s.container.MoveTransactionPicture(ctx, s.getStagingTransactionPicturePath(uid, pictureId, fileExtension), s.getTransactionPicturePath(uid, pictureId, fileExtension))
+}
+
 // DeleteTransactionPicture returns whether delete the transaction picture from the current transaction picture object storage successfully
 func (s *ServiceUsingStorage) DeleteTransactionPicture(ctx core.Context, uid int64, pictureId int64, fileExtension string) error {
 	return s.container.DeleteTransactionPicture(ctx, s.getTransactionPicturePath(uid, pictureId, fileExtension))
+}
+
+// DeleteStagingTransactionPicture returns whether delete the staging transaction picture from the current transaction picture object storage successfully
+func (s *ServiceUsingStorage) DeleteStagingTransactionPicture(ctx core.Context, uid int64, pictureId int64, fileExtension string) error {
+	return s.container.DeleteTransactionPicture(ctx, s.getStagingTransactionPicturePath(uid, pictureId, fileExtension))
+}
+
+// ListTransactionPictureObjects returns all transaction picture objects under the specified prefix path in the current transaction picture object storage
+func (s *ServiceUsingStorage) ListTransactionPictureObjects(ctx core.Context, prefixPath string) ([]storage.ObjectInStorageInfo, error) {
+	return s.container.ListTransactionPictureObjects(ctx, prefixPath)
+}
+
+// TransactionPictureStorageReady returns whether the transaction picture object storage is ready
+func (s *ServiceUsingStorage) TransactionPictureStorageReady() bool {
+	return s.container.TransactionPictureStorageReady()
 }
 
 func (s *ServiceUsingStorage) getUserAvatarPath(uid int64, fileExtension string) string {
@@ -160,6 +198,10 @@ func (s *ServiceUsingStorage) getUserAvatarPath(uid int64, fileExtension string)
 
 func (s *ServiceUsingStorage) getTransactionPicturePath(uid int64, pictureId int64, fileExtension string) string {
 	return filepath.Join(utils.Int64ToString(uid), fmt.Sprintf("%d.%s", pictureId, fileExtension))
+}
+
+func (s *ServiceUsingStorage) getStagingTransactionPicturePath(uid int64, pictureId int64, fileExtension string) string {
+	return filepath.Join(transactionPictureStagingPathPrefix, s.getTransactionPicturePath(uid, pictureId, fileExtension))
 }
 
 func (s *ServiceUsingStorage) getUserCustomIconPath(uid int64, iconId int64) string {

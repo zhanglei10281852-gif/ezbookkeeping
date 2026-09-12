@@ -382,8 +382,9 @@ type Config struct {
 	DuplicateSubmissionsIntervalDuration            time.Duration
 
 	// Cron
-	EnableRemoveExpiredTokens        bool
-	EnableCreateScheduledTransaction bool
+	EnableRemoveExpiredTokens          bool
+	EnableCreateScheduledTransaction   bool
+	EnableCleanupTransactionPictures   bool
 
 	// Secret
 	SecretKeyNoSet                        bool
@@ -1019,6 +1020,7 @@ func loadDuplicateCheckerConfiguration(config *Config, configFile *ini.File, sec
 func loadCronConfiguration(config *Config, configFile *ini.File, sectionName string) error {
 	config.EnableRemoveExpiredTokens = getConfigItemBoolValue(configFile, sectionName, "enable_remove_expired_tokens", false)
 	config.EnableCreateScheduledTransaction = getConfigItemBoolValue(configFile, sectionName, "enable_create_scheduled_transaction", false)
+	config.EnableCleanupTransactionPictures = getConfigItemBoolValue(configFile, sectionName, "enable_cleanup_transaction_picture", false)
 
 	return nil
 }

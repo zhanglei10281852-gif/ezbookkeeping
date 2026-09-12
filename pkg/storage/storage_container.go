@@ -165,6 +165,29 @@ func (s *StorageContainer) DeleteTransactionPicture(ctx core.Context, path strin
 	return s.transactionPictureCurrentStorage.Delete(ctx, path)
 }
 
+// TransactionPictureStorageReady returns whether the transaction picture object storage is ready
+func (s *StorageContainer) TransactionPictureStorageReady() bool {
+	return s.transactionPictureCurrentStorage != nil
+}
+
+// MoveTransactionPicture moves the transaction picture file from the source path to the destination path in the current transaction picture object storage
+func (s *StorageContainer) MoveTransactionPicture(ctx core.Context, srcPath string, dstPath string) error {
+	if s.transactionPictureCurrentStorage == nil {
+		return errs.ErrSystemError
+	}
+
+	return s.transactionPictureCurrentStorage.Move(ctx, srcPath, dstPath)
+}
+
+// ListTransactionPictureObjects returns all transaction picture objects under the specified prefix path in the current transaction picture object storage
+func (s *StorageContainer) ListTransactionPictureObjects(ctx core.Context, prefixPath string) ([]ObjectInStorageInfo, error) {
+	if s.transactionPictureCurrentStorage == nil {
+		return nil, errs.ErrSystemError
+	}
+
+	return s.transactionPictureCurrentStorage.List(ctx, prefixPath)
+}
+
 func newObjectStorage(config *settings.Config, pathPrefix string) (ObjectStorage, error) {
 	if config.StorageType == settings.LocalFileSystemObjectStorageType {
 		return NewLocalFileSystemObjectStorage(config, pathPrefix)

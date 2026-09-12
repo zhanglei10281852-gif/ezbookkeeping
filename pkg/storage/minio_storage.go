@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/tls"
 	"net/http"
+	"os"
 	"strings"
 
 	"github.com/minio/minio-go/v7"
@@ -68,11 +69,19 @@ func NewMinIOObjectStorage(config *settings.Config, pathPrefix string) (*MinIOOb
 func (s *MinIOObjectStorage) Exists(ctx core.Context, path string) (bool, error) {
 	objectInfo, err := s.minIOClient.StatObject(ctx, s.minIOConfig.Bucket, s.getFinalPath(path), minio.StatObjectOptions{})
 
-	if err == nil && !objectInfo.IsDeleteMarker {
-		return true, nil
+	if err != nil {
+		if isMinIOObjectNotExists(err) {
+			return false, nil
+		}
+
+		return false, err
 	}
 
-	return false, err
+	if objectInfo.IsDeleteMarker {
+		return false, nil
+	}
+
+	return true, nil
 }
 
 // Read returns the object instance according to specified the file path
@@ -89,7 +98,111 @@ func (s *MinIOObjectStorage) Save(ctx core.Context, path string, object ObjectIn
 
 // Delete returns whether delete the object according to specified the file path successfully
 func (s *MinIOObjectStorage) Delete(ctx core.Context, path string) error {
-	return s.minIOClient.RemoveObject(ctx, s.minIOConfig.Bucket, s.getFinalPath(path), minio.RemoveObjectOptions{})
+	err := s.minIOClient.RemoveObject(ctx, s.minIOConfig.Bucket, s.getFinalPath(path), minio.RemoveObjectOptions{})
+
+	if err != nil && isMinIOObjectNotExists(err) {
+		return nil
+	}
+
+	return err
+}
+
+// Move moves the object from the source path to the destination path
+func (s *MinIOObjectStorage) Move(ctx core.Context, srcPath string, dstPath string) error {
+	finalSrcPath := s.getFinalPath(srcPath)
+	finalDstPath := s.getFinalPath(dstPath)
+
+	// If the destination object already exists, the move has been completed. Remove the source object idempotently.
+	if _, err := s.minIOClient.StatObject(ctx, s.minIOConfig.Bucket, finalDstPath, minio.StatObjectOptions{}); err == nil {
+		err := s.minIOClient.RemoveObject(ctx, s.minIOConfig.Bucket, finalSrcPath, minio.RemoveObjectOptions{})
+
+		if err != nil && !isMinIOObjectNotExists(err) {
+			return err
+		}
+
+		return nil
+	}
+
+	if _, err := s.minIOClient.StatObject(ctx, s.minIOConfig.Bucket, finalSrcPath, minio.StatObjectOptions{}); err != nil {
+		if isMinIOObjectNotExists(err) {
+			return os.ErrNotExist
+		}
+
+		return err
+	}
+
+	_, err := s.minIOClient.CopyObject(ctx,
+		minio.CopyDestOptions{
+			Bucket: s.minIOConfig.Bucket,
+			Object: finalDstPath,
+		},
+		minio.CopySrcOptions{
+			Bucket: s.minIOConfig.Bucket,
+			Object: finalSrcPath,
+		})
+
+	if err != nil {
+		if isMinIOObjectNotExists(err) {
+			return os.ErrNotExist
+		}
+
+		return err
+	}
+
+	err = s.minIOClient.RemoveObject(ctx, s.minIOConfig.Bucket, finalSrcPath, minio.RemoveObjectOptions{})
+
+	if err != nil && !isMinIOObjectNotExists(err) {
+		return err
+	}
+
+	return nil
+}
+
+// List returns all objects under the specified prefix path
+func (s *MinIOObjectStorage) List(ctx core.Context, prefixPath string) ([]ObjectInStorageInfo, error) {
+	listPrefix := s.getFinalPath(prefixPath)
+
+	if !strings.HasSuffix(listPrefix, "/") {
+		listPrefix += "/"
+	}
+
+	// The root path prefix always ends with "/" and represents the root of this object storage
+	rootPrefix := s.getFinalPath("")
+	relativePrefix := strings.TrimPrefix(listPrefix, rootPrefix)
+
+	objects := make([]ObjectInStorageInfo, 0)
+
+	for object := range s.minIOClient.ListObjects(ctx, s.minIOConfig.Bucket, minio.ListObjectsOptions{
+		Prefix:    listPrefix,
+		Recursive: true,
+	}) {
+		if object.Err != nil {
+			return nil, object.Err
+		}
+
+		if strings.HasSuffix(object.Key, "/") {
+			continue
+		}
+
+		keyRelativePath := strings.TrimPrefix(object.Key, listPrefix)
+
+		if keyRelativePath == object.Key || keyRelativePath == "" {
+			continue
+		}
+
+		objects = append(objects, ObjectInStorageInfo{
+			Path:         relativePrefix + keyRelativePath,
+			Size:         object.Size,
+			LastModified: object.LastModified,
+		})
+	}
+
+	return objects, nil
+}
+
+func isMinIOObjectNotExists(err error) bool {
+	errorResponse := minio.ToErrorResponse(err)
+	return errorResponse.Code == "NoSuchKey" || errorResponse.Code == "NoSuchVersion" || errorResponse.StatusCode == http.StatusNotFound
 }
 
 func (s *MinIOObjectStorage) getFinalPath(path string) string {
